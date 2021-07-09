@@ -8,21 +8,38 @@
 	<font size="5">Watchface Settings</font><br>
 	<font size="3">------------------------------------------</font></h1>
  
-    <p><b>Bible Language:</b>
+    <p><b>VOTD Language:</b>
     <select id="language_select" onchange="setupVersionCombo()">
       <option value="">Select Language...</option>
     </select>
     </p>
 	
-	<p><font size="2"><i>Note: Some languages may not be supported by Pebble.</i></font></p>
+	<p><font size="2"><i>Some languages may not be supported by Pebble.</i></font></p>
 
-    <p><br><b>Bible Version:</b>
+    <p><br><b>VOTD Bible Version:</b>
     <select id="version_select" style="width:300px">
       <option value="">Select Version...</option>
     </select>
     </p>
 	
-	<p><font size="2"><i>Note: Some versions are partial, i.e. they do not contain the whole Bible.</i></font></p>
+	<p><font size="2"><i>Some versions are partial, i.e. they do not contain the whole Bible.</i></font></p>
+	
+    <p><br><b>Show Favourite Verse:</b>
+    <input type="checkbox" id="favVerseEnable_checkbox">
+	</p>
+	
+	<p><font size="2"><i>If checked, Favourite Verse will be shown instead of Verse Of The Day.</i></font></p>
+
+	<p><br><b>Favourite Verse:</b>
+    <select id="favVerseBook_select">
+      <option value="">Select Book...</option>
+    </select>
+	<input type="text" id="favVerseChapter_input" style="width:23px"/>
+	<font size="3"><b>:</b></font>
+	<input type="text" id="favVerseVerse_input" style="width:47px"/>
+    </p>
+	
+	<p><font size="2"><i>Favourite Verse is taken from ESV version. Verse ranges are valid, e.g. "1-3".</i></font></p>
 
     <p><br><b>Date Format:</b>
     <select id="dateFormat_select">
@@ -294,10 +311,79 @@ var versionTable = [
                                                               {value:"bd2011",   text:"Bản Dịch 2011"},
                                                               {value:"bpt",      text:"Vietnamese Bible: Easy-to-Read Version"}] }
   ];
+  
+var bookTable = [
+  { value:"gen", text:"Genesis" },
+  { value:"exo", text:"Exodus" },
+  { value:"lev", text:"Leviticus" },
+  { value:"num", text:"Numbers" },
+  { value:"deu", text:"Deuteronomy" },
+  { value:"jos", text:"Joshua" },
+  { value:"jud", text:"Judges" },
+  { value:"rut", text:"Ruth" },
+  { value:"1sa", text:"1 Samuel" },
+  { value:"2sa", text:"2 Samuel" },
+  { value:"1ki", text:"1 Kings" },
+  { value:"2ki", text:"2 Kings" },
+  { value:"1ch", text:"1 Chronicles" },
+  { value:"2ch", text:"2 Chronicles" },
+  { value:"ezr", text:"Ezra" },
+  { value:"neh", text:"Nehemiah" },
+  { value:"est", text:"Esther" },
+  { value:"job", text:"Job" },
+  { value:"psa", text:"Psalms" },
+  { value:"pro", text:"Proverbs" },
+  { value:"ecc", text:"Ecclesiastes" },
+  { value:"son", text:"Song of Solomon" },
+  { value:"isa", text:"Isaiah" },
+  { value:"jer", text:"Jeremiah" },
+  { value:"lam", text:"Lamentations" },
+  { value:"eze", text:"Ezekiel" },
+  { value:"dan", text:"Daniel" },
+  { value:"hos", text:"Hosea" },
+  { value:"joe", text:"Joel" },
+  { value:"amo", text:"Amos" },
+  { value:"oba", text:"Obadiah" },
+  { value:"jon", text:"Jonah" },
+  { value:"mic", text:"Micah" },
+  { value:"nah", text:"Nahum" },
+  { value:"hab", text:"Habakkuk" },
+  { value:"zep", text:"Zephaniah" },
+  { value:"hag", text:"Haggai" },
+  { value:"zec", text:"Zechariah" },
+  { value:"mal", text:"Malachi" },
+  { value:"mat", text:"Matthew" },
+  { value:"mar", text:"Mark" },
+  { value:"luk", text:"Luke" },
+  { value:"joh", text:"John" },
+  { value:"act", text:"Acts" },
+  { value:"rom", text:"Romans" },
+  { value:"1co", text:"1 Corinthians" },
+  { value:"2co", text:"2 Corinthians" },
+  { value:"gal", text:"Galatians" },
+  { value:"eph", text:"Ephesians" },
+  { value:"phi", text:"Philippians" },
+  { value:"col", text:"Colossians" },
+  { value:"1th", text:"1 Thessalonians" },
+  { value:"2th", text:"2 Thessalonians" },
+  { value:"1ti", text:"1 Timothy" },
+  { value:"2ti", text:"2 Timothy" },
+  { value:"tit", text:"Titus" },
+  { value:"phile", text:"Philemon" },
+  { value:"heb", text:"Hebrews" },
+  { value:"jam", text:"James" },
+  { value:"1pe", text:"1 Peter" },
+  { value:"2pe", text:"2 Peter" },
+  { value:"1jo", text:"1 John" },
+  { value:"2jo", text:"2 John" },
+  { value:"3jo", text:"3 John" },
+  { value:"jud", text:"Jude" },
+  { value:"rev", text:"Revelation" },
+  ];
 
 function parseArgs()
 {
-  var versionString, dateFormat, verseFont, updateTime, enableLight, btVibe, showAmPm, invertColours, scrollSpeed;
+  var versionString, dateFormat, verseFont, updateTime, enableLight, btVibe, showAmPm, invertColours, scrollSpeed, favVerseEnable, favVerse;
   var args = location.search.substr(1).split("&");
 
   for (var i = 0; i<args.length; i++)
@@ -322,15 +408,33 @@ function parseArgs()
         invertColours = decodeURIComponent(temp[1]);
       else if (temp[0] === "scrollSpeed")
         scrollSpeed = decodeURIComponent(temp[1]);
+      else if (temp[0] === "favVerseEnable")
+        favVerseEnable = decodeURIComponent(temp[1]);
+      else if (temp[0] === "favVerse")
+        favVerse = decodeURIComponent(temp[1]);
   }
 
-  initInputs(versionString, dateFormat, verseFont, updateTime, enableLight, btVibe, showAmPm, invertColours, scrollSpeed);
+  initInputs(versionString, dateFormat, verseFont, updateTime, enableLight, btVibe, showAmPm, invertColours, scrollSpeed, favVerseEnable, favVerse);
 }
 
-function initInputs(versionString, dateFormat, verseFont, updateTime, enableLight, btVibe, showAmPm, invertColours, scrollSpeed)
+function initFavVerseCombo(bookVal)
+{
+  var favVerseBookCombo = document.getElementById("favVerseBook_select");
+  
+  for (var i=0; i < bookTable.length; i++)
+  {
+    addOptionToCombo(favVerseBookCombo, bookTable[i]);
+  }
+  selectComboOption(favVerseBookCombo, bookVal);
+}
+  
+function initInputs(versionString, dateFormat, verseFont, updateTime, enableLight, btVibe, showAmPm, invertColours, scrollSpeed, favVerseEnable, favVerse)
 {
   initLanguageAndVersionCombos(versionString);
   initDateFormatCombo(dateFormat);
+  
+  favVerseObj = unpackFavVerse(""+favVerse);
+  initFavVerseCombo(favVerseObj.book);
   
   var updateTimeHourCombo = document.getElementById("updateTimeHour_select");
   var updateTimeMinuteCombo = document.getElementById("updateTimeMinute_select");
@@ -340,9 +444,12 @@ function initInputs(versionString, dateFormat, verseFont, updateTime, enableLigh
   var invertColoursCheckbox = document.getElementById("invertColours_checkbox");
   var verseFontCombo = document.getElementById("verseFont_select");
   var scrollSpeedCombo = document.getElementById("scrollSpeed_select");
+  var favVerseEnableCheckbox = document.getElementById("favVerseEnable_checkbox");
+  var favVerseChapterInput = document.getElementById("favVerseChapter_input");
+  var favVerseVerseInput = document.getElementById("favVerseVerse_input");
   
-  selectComboOption(verseFontCombo, verseFont.toString());
-  selectComboOption(scrollSpeedCombo, scrollSpeed.toString());
+  selectComboOption(verseFontCombo, ""+verseFont);
+  selectComboOption(scrollSpeedCombo, ""+scrollSpeed);
   
   var updateTimeVals = translateTimeSetting(updateTime);
   selectComboOption(updateTimeHourCombo, updateTimeVals.hour.toString());
@@ -352,6 +459,23 @@ function initInputs(versionString, dateFormat, verseFont, updateTime, enableLigh
   btVibeCheckbox.checked = (btVibe === 'true');
   showAmPmCheckbox.checked = (showAmPm === 'true');
   invertColoursCheckbox.checked = (invertColours === 'true');
+  favVerseEnableCheckbox.checked = (favVerseEnable === 'true');
+  favVerseChapterInput.value = favVerseObj.chapter;
+  favVerseVerseInput.value = favVerseObj.verse;
+}
+
+function unpackFavVerse(favVerse)
+{
+  favVerse = favVerse.toLowerCase();
+  var colonIdx = favVerse.indexOf(':');
+  var letters = favVerse.match(/[1-3]?[a-z]*/);
+  var chapterStartIdx = favVerse.lastIndexOf(letters[0][letters[0].length-1]) + 1;
+
+  var bookVal = favVerse.substring(0, chapterStartIdx);
+  var chapterText = favVerse.substring(chapterStartIdx, colonIdx);
+  var verseText = favVerse.slice(colonIdx+1);
+
+  return {book: bookVal, chapter: chapterText, verse: verseText};
 }
 
 function initLanguageAndVersionCombos(versionString)
@@ -405,7 +529,7 @@ function initDateFormatCombo(dateFormat)
   case 5:  dayName = 'Friday';  break;
   case 6:  dayName = 'Saturday';  break;
   default:  break;
- }
+  }
  
   switch (monthNum)
   {
@@ -422,7 +546,7 @@ function initDateFormatCombo(dateFormat)
   case 10:  monthName = 'Nov';  monthNum = '11';  break;
   case 11:  monthName = 'Dec';  monthNum = '12';  break;
   default:  break;
- }
+  }
   
   dateFormats[0] = dayName.substring(0,3) + ' ' + dayNum + ' ' + monthName; // Sat 31 Jan
   dateFormats[1] = dayName.substring(0,3) + ' ' + monthName + ' ' + dayNum; // Sat Jan 31
@@ -555,6 +679,28 @@ function getUpdateTime() {
   return calcTimeSetting("updateTimeHour_select", "updateTimeMinute_select");
 }
 
+function getFavVerseEnable() {
+  return document.getElementById("favVerseEnable_checkbox").checked;
+}
+
+function getFavVerse() {
+  bookVal = document.getElementById("favVerseBook_select").value;
+  chapterText = document.getElementById("favVerseChapter_input").value;
+  verseText = document.getElementById("favVerseVerse_input").value;
+  return bookVal.concat(chapterText, ':', verseText);
+}
+
+function validateFavVerse()
+{
+  chapterText = document.getElementById("favVerseChapter_input").value;
+  verseText = document.getElementById("favVerseVerse_input").value;
+  if( chapterText.match(/^[1-9]([0-9]?){2}$/) &&
+    verseText.match(/^[1-9]([0-9]?){2}(-[1-9]([0-9]?){2})?$/) )
+    return true;
+  else
+    return false;
+}
+
 var submitButton = document.getElementById("save_button");
 submitButton.addEventListener("click", 
   function() {
@@ -568,8 +714,15 @@ submitButton.addEventListener("click",
       "btVibe": getBtVibe(),
       "showAmPm": getShowAmPm(),
       "invertColours": getInvertColours(),
-      "scrollSpeed": getScrollSpeed()
+      "scrollSpeed": getScrollSpeed(),
+	  "favVerseEnable": getFavVerseEnable()
     };
+    
+    if (getFavVerseEnable() && validateFavVerse())
+    {
+      options.favVerse = getFavVerse();
+    }
+
     var location = "pebblejs://close#" + encodeURIComponent(JSON.stringify(options));
     window.location.href = location;
   }, 

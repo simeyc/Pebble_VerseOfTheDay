@@ -1,5 +1,6 @@
-var baseUrl = "http://www.biblegateway.com/votd/get/?format=plaintext&version=";
-var configPageUrl = 'https://dl.dropboxusercontent.com/u/96641345/VOTDConfigV1_3.html';
+var votdBaseUrl = 'http://www.biblegateway.com/votd/get/?format=plaintext&version=';
+var favVerseBaseUrl = 'http://www.esvapi.org/v2/rest/passageQuery?key=IP&output-format=plain-text&include-first-verse-numbers=0&include-verse-numbers=0&include-footnotes=0&include-passage-horizontal-lines=0&include-heading-horizontal-lines=0&include-headings=0&include-subheadings=0&include-selahs=0&include-short-copyright=0&passage=';
+var configPageUrl = 'https://dl.dropboxusercontent.com/u/96641345/VOTDConfigV1_4.html';
 var versionStorageKey = 0;
 var verseRefStorageKey = 1;
 var verseTextStorageKey = 2;
@@ -11,7 +12,9 @@ var dateFormatStorageKey = 7;
 var showAmPmStorageKey = 8;
 var verseFontStorageKey = 9;
 var scrollSpeedStorageKey = 10;
-var versionString = "esvuk";
+var favVerseEnableStorageKey = 11;
+var favVerseStorageKey = 12;
+var versionString = "esv";
 var verseRef = "No Verse";
 var verseText = "No Verse";
 var dateFormat = 5;
@@ -22,6 +25,8 @@ var invertColours = false;
 var showAmPm = true;
 var verseFont = 1;
 var scrollSpeed = 1;
+var favVerseEnable = false;
+var favVerse = 'Joh3:16';
 
 var xhrRequest = function (url, type, callback) {
   var xhr = new XMLHttpRequest();
@@ -49,8 +54,19 @@ var sendVerse = function() {
 	});
 };
 
-var verseReceivedCallback = function(responseText) {
-	var reference = responseText.slice(0, responseText.search('\n'));
+var saveAndSendVerse = function(reference, text) {	
+	verseRef = reference;
+	verseText = text;
+    
+	// persist store verse and ref
+    localStorage.setItem(verseRefStorageKey, verseRef);
+    localStorage.setItem(verseTextStorageKey, verseText);
+	
+	sendVerse();
+};
+
+var votdReceivedCallback = function(responseText) {
+	var reference = responseText.slice(0, responseText.search('\n')).trim();
 			
 	var text = responseText.slice(reference.length+1); // up to the first '='
 	text = text.slice(text.indexOf('\n'));
@@ -65,22 +81,41 @@ var verseReceivedCallback = function(responseText) {
 		squareBracketOpen = text.search(/\[ /);
 		squareBracketClose = text.search(/ \] /);
 	}
+	text = text.trim() + ' (' + versionString.toUpperCase() + ')';
 	
-	verseRef = reference.trim();
-	verseText = text.trim();
-    
-	// persist store verse and ref
-    localStorage.setItem(verseRefStorageKey, verseRef);
-    localStorage.setItem(verseTextStorageKey, verseText);
-	
-	sendVerse();
+	saveAndSendVerse(reference, text);
 };
 
-var getVerse = function()
-{	
-	var url = baseUrl.concat(versionString);
+var favVerseReceivedCallback = function(responseText) {
+	var reference = responseText.slice(0, responseText.search('\n')).trim();
+	var text = '';
+	
+	if (reference.search('ERROR') >= 0)
+	{
+		reference = 'Invalid Verse';
+		text = ':-(\n\nPlease check Favourite Verse settings';
+	}
+	else
+	{
+		text = responseText.slice(reference.length);
+		text = text.replace(/\n|[ ]{2,}/g, ' ');
+		text = text.trim() + ' (ESV)';
+	}
+	
+	saveAndSendVerse(reference, text);
+};
+
+var getVerse = function() {
+	var url = votdBaseUrl.concat(versionString);
+	var callback = votdReceivedCallback;
+	
+	if (favVerseEnable) {
+		url = favVerseBaseUrl.concat(favVerse);
+		callback = favVerseReceivedCallback;
+	}
+	
 	console.log("Getting verse - URL: "+ url);
-	xhrRequest(url, 'GET', verseReceivedCallback);
+	xhrRequest(url, 'GET', callback);
 };
 
 var sendUpdates = function(dateFormatChanged, updateTimeChanged, enableLightChanged, btVibeChanged,
@@ -192,6 +227,14 @@ Pebble.addEventListener('ready',
 	tempVar = localStorage.getItem(scrollSpeedStorageKey);	
 	if (tempVar !== null)
 		scrollSpeed = tempVar;
+
+	tempVar = localStorage.getItem(favVerseEnableStorageKey);	
+	if (tempVar !== null)
+		favVerseEnable = tempVar;
+
+	tempVar = localStorage.getItem(favVerseStorageKey);	
+	if (tempVar !== null)
+		favVerse = tempVar;
 	
 	//if (verseRef === "No Verse")
 	//{
@@ -287,12 +330,25 @@ Pebble.addEventListener("webviewclosed",
       scrollSpeedChanged = true;
 	}
 	
+	if ( configuration.hasOwnProperty('favVerseEnable') && (configuration.favVerseEnable != favVerseEnable.toString()) ) {
+      favVerseEnable = (configuration.favVerseEnable.toString() === "true");
+      localStorage.setItem(favVerseEnableStorageKey, favVerseEnable);
+      needVerse = true;
+	}
+	
+	if ( configuration.hasOwnProperty('favVerse') && (configuration.favVerse != favVerse) ) {
+      favVerse = configuration.favVerse;
+      localStorage.setItem(favVerseStorageKey, favVerse);
+      needVerse = true;
+	}
+	
     sendUpdates(dateFormatChanged, updateTimeChanged, enableLightChanged, btVibeChanged,
-				invertColoursChanged, showAmPmChanged, verseFontChanged, scrollSpeedChanged, needVerse);
+		invertColoursChanged, showAmPmChanged, verseFontChanged, scrollSpeedChanged, needVerse);
   }
 );
 
-Pebble.addEventListener('showConfiguration', function(e) {
+Pebble.addEventListener('showConfiguration',
+  function(e) {
   var args = '?versionString=' + versionString;
   args += '&dateFormat=' + dateFormat.toString();
   args += '&updateTime=' + updateTime.toString();
@@ -302,6 +358,9 @@ Pebble.addEventListener('showConfiguration', function(e) {
   args +='&showAmPm=' + showAmPm.toString();
   args +='&verseFont=' + verseFont.toString();
   args +='&scrollSpeed=' + scrollSpeed.toString();
+  args +='&favVerseEnable=' + favVerseEnable.toString();
+  args +='&favVerse=' + favVerse.toString();
 
   Pebble.openURL(configPageUrl + args);
-});
+}
+);

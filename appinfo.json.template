@@ -22,6 +22,27 @@
     "resources": {
         "media": [
             {
+                "file": "images/MenuImage.png",
+                "menuIcon": true,
+                "name": "MENU_IMAGE",
+                "type": "png"
+            },
+            {
+                "file": "images/StatusIcons.png",
+                "name": "STATUS_ICONS",
+                "type": "png"
+            },
+            {
+                "file": "images/BordersHoriz.png",
+                "name": "BORDERS_HORIZ",
+                "type": "png"
+            },
+            {
+                "file": "images/BordersVert.png",
+                "name": "BORDERS_VERT",
+                "type": "png"
+            },
+            {
                 "characterRegex": "[0-9:]",
                 "file": "fonts/droid.ttf",
                 "name": "FONT_TIME_96",
@@ -32,30 +53,13 @@
                 "file": "fonts/droid.ttf",
                 "name": "FONT_AMPM_38",
                 "type": "font"
-            },
-            {
-                "file": "images/StatusIcons.png",
-                "name": "STATUS_ICONS",
-                "type": "png"
-            },
-            {
-                "file": "images/BordersVert.png",
-                "name": "BORDERS_VERT",
-                "type": "png"
-            },
-            {
-                "file": "images/BordersHoriz.png",
-                "name": "BORDERS_HORIZ",
-                "type": "png"
             }
         ]
     },
-    "sdkVersion": "3",
+    "sdkVersion": "2",
     "shortName": "Verse Of The Day",
-    "targetPlatforms": [
-        "aplite"
-    ],
-    "versionLabel": "1.3",
+    "versionCode": 1,
+    "versionLabel": "1.4",
     "watchapp": {
         "watchface": true
     }

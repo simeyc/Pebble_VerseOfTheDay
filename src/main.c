@@ -3,9 +3,9 @@
 //#define DEMO_MODE
 #define DEMO_TIME_24H "10:45"
 #define DEMO_TIME_12H "08:30 PM"
-#define DEMO_DATE "Sat 6 Dec"
-#define DEMO_VERSE_REF "John 10:10"
-#define DEMO_VERSE_TEXT "The thief comes only to steal and kill and destroy; I have come that they may have life, and have it to the full."
+#define DEMO_DATE "Saturday 31"
+#define DEMO_VERSE_REF "John 10:10" //"Psalm 1:1"
+#define DEMO_VERSE_TEXT "The thief comes only to steal and kill and destroy; I have come that they may have life, and have it to the full." //"How well God must like you— you don’t hang out at Sin Saloon, you don’t slink along Dead-End Road, you don’t go to Smart-Mouth College."
 
 #define PERSISTENT_STORAGE_VERSION 1 // increment when storage values change
 
@@ -45,7 +45,7 @@
 #define VERSE_ANIMATION_DURATION 400
 #define VERSE_WAIT_TIME_SCROLL 6000 // TODO: s_settingScrollSpeed should affect wait times!
 #define VERSE_WAIT_TIME_NOSCROLL 15000
-#define MINUTES_PER_DAY 1440
+//#define MINUTES_PER_DAY 1440
 #define VERSE_TEXT_VISIBLE_HEIGHT 114
 #define UPDATE_INTERVAL 20000
 #define REFERENCE_MAX_SIZE 25
@@ -187,8 +187,8 @@ static bool s_settingShowAmPm = DEFAULT_SHOW_AMPM;
 static uint16_t s_settingVerseFont = DEFAULT_VERSE_FONT;
 static uint16_t s_settingScrollSpeed = DEFAULT_SCROLL_SPEED;
 
-static GFont* s_font_time;
-static GFont* s_font_amPm;
+static GFont s_font_time;
+static GFont s_font_amPm;
 
 char* translate_error(AppMessageResult result)
 {
@@ -303,9 +303,9 @@ static void startVerseDisplayTimer(void)
 	cancelTimer(s_timer_verseDisplayTimer);
 	
 	if (s_needScroll)
-		s_timer_verseDisplayTimer = app_timer_register(s_verseScrollSettings.waitTimeScroll, scheduleScrollAnimation, NULL);
+		s_timer_verseDisplayTimer = app_timer_register(s_verseScrollSettings. waitTimeScroll, scheduleScrollAnimation, NULL);
 	else
-		s_timer_verseDisplayTimer = app_timer_register(s_verseScrollSettings.waitTimeNoScroll, timerCbHideVerse, NULL);	
+		s_timer_verseDisplayTimer = app_timer_register(s_verseScrollSettings. waitTimeNoScroll, timerCbHideVerse, NULL);	
 }
 
 static void verseScrollFinishedCallback(Animation* animation, bool finished, void* context)
@@ -313,7 +313,7 @@ static void verseScrollFinishedCallback(Animation* animation, bool finished, voi
 	if (finished)
 	{
 		cancelTimer(s_timer_verseDisplayTimer);
-		s_timer_verseDisplayTimer = app_timer_register(s_verseScrollSettings.waitTimeScroll, timerCbHideVerse, NULL);
+		s_timer_verseDisplayTimer = app_timer_register(s_verseScrollSettings. waitTimeScroll, timerCbHideVerse, NULL);
 	}
 }
 
@@ -468,16 +468,18 @@ static void sendAppMessage(void)
 
 static void requestVerseTimerCallback(void* data)
 {
-	//if (!s_gotVerse)
-	//{
-		if (s_verseRequests < MAX_VERSE_REQUESTS_PER_HOUR)
-		{
-			sendAppMessage();
-			s_verseRequests += 1;
-		}
-		else
-			s_timer_requestVerseTimer = NULL;
-	//}
+	if (s_verseRequests < MAX_VERSE_REQUESTS_PER_HOUR)
+	{
+		sendAppMessage();
+		s_verseRequests += 1;
+	}
+	else
+	{
+		s_timer_requestVerseTimer = NULL;
+
+		//if (!s_gotVerse)
+		//	text_layer_set_text(s_layer_verseText, ":-(\n\nCouldn't get verse!\nPlease check data connection and restart watchface");
+	}
 }
 
 static void getVerse(void)
@@ -792,7 +794,7 @@ static void bluetoothConnectionHandler(bool connected)
 	
 	if (connected)
 	{
-		static const uint32_t const btConnPattern[] = { 100, 300, 100 };
+		static const uint32_t btConnPattern[] = { 100, 300, 100 };
 		vibePattern = (VibePattern) {
 			.durations = btConnPattern,
 			.num_segments = ARRAY_LENGTH(btConnPattern)
@@ -800,7 +802,7 @@ static void bluetoothConnectionHandler(bool connected)
 	}
 	else
 	{
-		static const uint32_t const btDisconPattern[] = { 100, 300, 400 };
+		static const uint32_t btDisconPattern[] = { 100, 300, 400 };
 		vibePattern = (VibePattern) {
 			.durations = btDisconPattern,
 			.num_segments = ARRAY_LENGTH(btDisconPattern)
