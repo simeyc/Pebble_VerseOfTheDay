@@ -1,6 +1,5 @@
 #include <pebble.h>
-	
-//#define ENABLE_TIME_BAR
+
 //#define DEMO_MODE
 #define DEMO_TIME_24H "10:45"
 #define DEMO_TIME_12H "08:30 PM"
@@ -8,36 +7,46 @@
 #define DEMO_VERSE_REF "John 10:10"
 #define DEMO_VERSE_TEXT "The thief comes only to steal and kill and destroy; I have come that they may have life, and have it to the full."
 
+#define PERSISTENT_STORAGE_VERSION 1 // increment when storage values change
+
 #define KEY_VERSE_REFERENCE 0
 #define KEY_VERSE_TEXT 1
-#define KEY_BAR_START 2
-#define KEY_BAR_END 3
-#define KEY_UPDATE_TIME 4
-#define KEY_ENABLE_LIGHT 5
-#define KEY_BT_VIBE 6
-#define KEY_INVERT_COLOURS 7
-#define PERSIST_KEY_BARSTART 0
-#define PERSIST_KEY_BAREND 1
+#define KEY_DATE_FORMAT 2
+#define KEY_UPDATE_TIME 3
+#define KEY_ENABLE_LIGHT 4
+#define KEY_BT_VIBE 5
+#define KEY_INVERT_COLOURS 6
+#define KEY_SHOW_AMPM 7
+#define KEY_VERSE_FONT 8
+#define KEY_SCROLL_SPEED 9
+#define KEY_REQUEST_SETTINGS 10
+
+#define PERSIST_KEY_DATEFORMAT 0
+#define PERSIST_KEY_STORAGEVERSION 1
 #define PERSIST_KEY_UPDATETIME 2
 #define PERSIST_KEY_ENABLELIGHT 3
 #define PERSIST_KEY_BTVIBE 4
 #define PERSIST_KEY_INVERTCOLOURS 5
-	
-#define DEFAULT_BAR_START 480 // 8am
-#define DEFAULT_BAR_END 0 // 12am
+#define PERSIST_KEY_SHOWAMPM 6
+#define PERSIST_KEY_VERSEFONT 7
+#define PERSIST_KEY_SCROLLSPEED 8
+
+#define DEFAULT_DATE_FORMAT 0
 #define DEFAULT_UPDATE_TIME 360 // 6am
 #define DEFAULT_ENABLE_LIGHT true
 #define DEFAULT_BT_VIBE true
 #define DEFAULT_INVERT_COLOURS false
+#define DEFAULT_SHOW_AMPM true
+#define DEFAULT_VERSE_FONT VERSE_FONT_MEDIUM
+#define DEFAULT_SCROLL_SPEED SCROLL_SPEED_MEDIUM
 
 #define DEFAULT_DATE_STRING "DAY ## MTH"
 #define DEFAULT_TIME_STRING "HH:MMxx"
 #define VERSE_ANIMATION_DURATION 400
-#define VERSE_WAIT_TIME_SCROLL 6000
+#define VERSE_WAIT_TIME_SCROLL 6000 // TODO: s_settingScrollSpeed should affect wait times!
 #define VERSE_WAIT_TIME_NOSCROLL 15000
 #define MINUTES_PER_DAY 1440
 #define VERSE_TEXT_VISIBLE_HEIGHT 114
-#define SCROLL_SPEED 0.008f // Pixels per Millisecond
 #define UPDATE_INTERVAL 20000
 #define REFERENCE_MAX_SIZE 25
 #define VERSE_MAX_SIZE 1000
@@ -48,6 +57,17 @@
 #define SHAKE_AWAKE_TIMEOUT 3000
 #define LIGHT_CHECK_TIMEOUT 3000
 #define HIDE_STATUS_TIMEOUT 5000
+#define VERSE_BOX_MAX_HEIGHT 500
+
+#define SCROLL_SPEED_PX_PER_MS_SLOW 0.008f
+#define WAIT_TIME_SCROLL_MS_SLOW 6000
+#define WAIT_TIME_NO_SCROLL_MS_SLOW 15000
+#define SCROLL_SPEED_PX_PER_MS_MEDIUM 0.014f
+#define WAIT_TIME_SCROLL_MS_MEDIUM 4000
+#define WAIT_TIME_NO_SCROLL_MS_MEDIUM 12000
+#define SCROLL_SPEED_PX_PER_MS_FAST 0.02f
+#define WAIT_TIME_SCROLL_MS_FAST 2000
+#define WAIT_TIME_NO_SCROLL_MS_FAST 9000
 
 #define GRECT_BLUETOOTH_OUT GRect(-20, 90, 20, 16)
 #define GRECT_BLUETOOTH_IN GRect(58, 90, 20, 16)
@@ -58,17 +78,45 @@
 
 #define FONT_TIME RESOURCE_ID_FONT_TIME_96
 #define FONT_AMPM RESOURCE_ID_FONT_AMPM_38
-	
+
 #define NUM_INVERTER_LAYERS_PER_BORDER 6
 
-static const uint8_t VERSE_TEXT_Y_COORD = 23;
+#define VERSE_TEXT_Y_COORD 27
+	
+#define VERSE_TEXT_PADDING_SMALL 4
+#define VERSE_TEXT_PADDING_MEDIUM 7
+#define VERSE_TEXT_PADDING_LARGE 10
+#define VERSE_TEXT_PADDING_XLARGE 10
+
+enum {
+	VERSE_FONT_SMALL = 0,
+	VERSE_FONT_MEDIUM = 1,
+	VERSE_FONT_LARGE = 2,
+	VERSE_FONT_XLARGE = 3,
+} VerseFont_t;
+
+enum {
+	SCROLL_SPEED_SLOW = 0,
+	SCROLL_SPEED_MEDIUM = 1,
+	SCROLL_SPEED_FAST = 2,
+} ScrollSpeed_t;
+
+typedef struct {
+	GFont font;
+	int16_t padding;
+} VerseTextSettings_t;
+
+typedef struct {
+	uint16_t waitTimeScroll;
+	uint16_t waitTimeNoScroll;
+	float scrollSpeed;
+} VerseScrollSettings_t;
 
 static Window* s_main_window;
 static TextLayer* s_layer_time;
 static TextLayer* s_layer_date;
 static TextLayer* s_layer_verseRef;
 static TextLayer* s_layer_amPm;
-static Layer* s_layer_timeBar;
 static Layer* s_layer_timeDisplay;
 static TextLayer* s_layer_verseText;
 static BitmapLayer* s_layer_borderTop;
@@ -101,7 +149,6 @@ static GBitmap* s_bitmap_batteryIconBattery;
 static GBitmap* s_bitmap_batteryIconCharging;
 static GBitmap* s_bitmap_batteryIconPlugged;
 static GBitmap* s_bitmap_batteryColon;
-static uint16_t s_barLength;
 
 static PropertyAnimation* s_animation_miniTime;
 static PropertyAnimation* s_animation_borderTopCompress;
@@ -121,23 +168,24 @@ static AppTimer* s_timer_hideStatus;
 static bool s_gotVerse;
 static bool s_verseShown;
 static uint8_t s_verseRequests;
-
-static float s_barPxPerMinDay;
-static float s_barPxPerMinNight;
-static bool s_isDayTime;
 static bool s_needScroll;
 static bool s_bluetoothConnected;
 static uint8_t s_batteryStatus;
 static uint8_t s_batteryLevel;
 static bool s_shakeAwake;
+static uint8_t s_verseTextYCoord;
+static VerseScrollSettings_t s_verseScrollSettings;
+static bool s_requestSettings;
 
 // settable through settings
-static uint16_t s_settingBarStart;
-static uint16_t s_settingBarEnd;
-static uint16_t s_settingUpdateTime;
-static uint16_t s_settingEnableLight;
-static bool s_settingBtVibe;
-static bool s_settingInvertColours;
+static uint16_t s_settingDateFormat = DEFAULT_DATE_FORMAT;
+static uint16_t s_settingUpdateTime = DEFAULT_UPDATE_TIME;
+static uint16_t s_settingEnableLight = DEFAULT_ENABLE_LIGHT;
+static bool s_settingBtVibe = DEFAULT_BT_VIBE;
+static bool s_settingInvertColours = DEFAULT_INVERT_COLOURS;
+static bool s_settingShowAmPm = DEFAULT_SHOW_AMPM;
+static uint16_t s_settingVerseFont = DEFAULT_VERSE_FONT;
+static uint16_t s_settingScrollSpeed = DEFAULT_SCROLL_SPEED;
 
 static GFont* s_font_time;
 static GFont* s_font_amPm;
@@ -175,13 +223,14 @@ static void cancelTimer(AppTimer* timer)
 static void adjustVerseTextPosition(void)
 {
 	GSize contentSize = text_layer_get_content_size(s_layer_verseText);
+	GRect origFrame = layer_get_frame((Layer*)s_layer_verseText);
 	
-	uint8_t yCoord = VERSE_TEXT_Y_COORD;
+	uint8_t yCoord = s_verseTextYCoord;
 	
 	if (contentSize.h <= VERSE_TEXT_VISIBLE_HEIGHT)
 		yCoord += ((VERSE_TEXT_VISIBLE_HEIGHT - contentSize.h) >> 1);
 	
-	layer_set_frame(text_layer_get_layer(s_layer_verseText), GRect(4, yCoord, 136, 300));
+	layer_set_frame(text_layer_get_layer(s_layer_verseText), GRect(origFrame.origin.x, yCoord, origFrame.size.w, origFrame.size.h));
 }
 
 static void checkLight(void* data)
@@ -254,9 +303,9 @@ static void startVerseDisplayTimer(void)
 	cancelTimer(s_timer_verseDisplayTimer);
 	
 	if (s_needScroll)
-		s_timer_verseDisplayTimer = app_timer_register(VERSE_WAIT_TIME_SCROLL, scheduleScrollAnimation, NULL);
+		s_timer_verseDisplayTimer = app_timer_register(s_verseScrollSettings.waitTimeScroll, scheduleScrollAnimation, NULL);
 	else
-		s_timer_verseDisplayTimer = app_timer_register(VERSE_WAIT_TIME_NOSCROLL, timerCbHideVerse, NULL);	
+		s_timer_verseDisplayTimer = app_timer_register(s_verseScrollSettings.waitTimeNoScroll, timerCbHideVerse, NULL);	
 }
 
 static void verseScrollFinishedCallback(Animation* animation, bool finished, void* context)
@@ -264,7 +313,7 @@ static void verseScrollFinishedCallback(Animation* animation, bool finished, voi
 	if (finished)
 	{
 		cancelTimer(s_timer_verseDisplayTimer);
-		s_timer_verseDisplayTimer = app_timer_register(VERSE_WAIT_TIME_SCROLL, timerCbHideVerse, NULL);
+		s_timer_verseDisplayTimer = app_timer_register(s_verseScrollSettings.waitTimeScroll, timerCbHideVerse, NULL);
 	}
 }
 
@@ -402,41 +451,6 @@ static void tap_handler(AccelAxisType axis, int32_t direction)
 	}
 }
 
-// arguments are times expressed in minutes from midnight, order is important
-static uint16_t diffTimes(uint16_t startTime, uint16_t endTime)
-{
-	int16_t mins = endTime - startTime;
-	
-	if (mins < 0)
-		mins += MINUTES_PER_DAY;
-	
-	return (uint16_t)mins;
-}
-#ifdef ENABLE_TIME_BAR
-void updateTimeBar(uint16_t timeNow)
-{
-	uint16_t minsElapsed;
-		
-	if (s_settingBarStart < s_settingBarEnd)
-		s_isDayTime = (timeNow >= s_settingBarStart) && (timeNow <= s_settingBarEnd);
-	else
-		s_isDayTime = (timeNow >= s_settingBarStart) || (timeNow <= s_settingBarEnd);
-	
-	if (s_isDayTime)
-	{
-		minsElapsed = diffTimes(s_settingBarStart, timeNow);
-		s_barLength = s_barPxPerMinDay * (float)minsElapsed;
-	}
-	else
-	{
-		minsElapsed = diffTimes(s_settingBarEnd, timeNow);
-		s_barLength = s_barPxPerMinNight * (float)minsElapsed + 1;
-	}
-		
-	layer_mark_dirty(s_layer_timeBar);
-}
-#endif //ENABLE_TIME_BAR
-
 static void sendAppMessage(void)
 {
 	DictionaryIterator *iter;
@@ -444,26 +458,26 @@ static void sendAppMessage(void)
 	
 	if (iter)
 	{
-		//dict_write_cstring(iter, KEY_VERSE_REFERENCE, "placeholder");
+		if (s_requestSettings)
+			dict_write_uint8(iter, KEY_REQUEST_SETTINGS, 0x01);
+		
+		APP_LOG(APP_LOG_LEVEL_DEBUG, "Sending from Pebble: requestSettings(%d)", s_requestSettings);
 		app_message_outbox_send();
 	}
 }
 
 static void requestVerseTimerCallback(void* data)
 {
-	if (!s_gotVerse)
-	{
-		sendAppMessage();
-		s_verseRequests += 1;
-		
-		if (s_verseRequests <= MAX_VERSE_REQUESTS_PER_HOUR) 
-			s_timer_requestVerseTimer = app_timer_register(UPDATE_INTERVAL, requestVerseTimerCallback, NULL);
-		else
+	//if (!s_gotVerse)
+	//{
+		if (s_verseRequests < MAX_VERSE_REQUESTS_PER_HOUR)
 		{
-			s_verseRequests = 0;
-			s_timer_requestVerseTimer = NULL;
+			sendAppMessage();
+			s_verseRequests += 1;
 		}
-	}
+		else
+			s_timer_requestVerseTimer = NULL;
+	//}
 }
 
 static void getVerse(void)
@@ -472,7 +486,8 @@ static void getVerse(void)
 	s_verseRequests = 0;
 	
 	cancelTimer(s_timer_requestVerseTimer);
-	s_timer_requestVerseTimer = app_timer_register(UPDATE_INTERVAL, requestVerseTimerCallback, NULL);
+	
+	sendAppMessage();
 }
 
 static void update_time(void)
@@ -510,84 +525,98 @@ static void update_time(void)
 		
 		timeBuf[i] = '\0'; // time without AM/PM
 		text_layer_set_text(s_layer_time, timeBuf);
-			
-		if (s_layer_amPm == NULL)
+		
+		if (s_settingShowAmPm)
 		{
-			s_font_amPm = fonts_load_custom_font(resource_get_handle(FONT_AMPM));
-			
-			// create layer, re-posistion time layer, add to timeDisplay layer
-			s_layer_amPm = text_layer_create(GRect(110, 0, 24, 40));
-			text_layer_set_background_color(s_layer_amPm, GColorBlack);
-			text_layer_set_text_color(s_layer_amPm, GColorWhite);
-			text_layer_set_text(s_layer_amPm, "pp");
-			text_layer_set_font(s_layer_amPm, s_font_amPm);
-			text_layer_set_text_alignment(s_layer_amPm, GTextAlignmentLeft);
-			
-			layer_add_child(s_layer_timeDisplay, (Layer*)s_layer_amPm);
-			text_layer_set_text_alignment(s_layer_time, GTextAlignmentLeft);
+			if (s_layer_amPm == NULL)
+			{
+				s_font_amPm = fonts_load_custom_font(resource_get_handle(FONT_AMPM));
+
+				// create layer, re-posistion time layer, add to timeDisplay layer
+				s_layer_amPm = text_layer_create(GRect(110, 0, 24, 40));
+				text_layer_set_background_color(s_layer_amPm, GColorBlack);
+				text_layer_set_text_color(s_layer_amPm, GColorWhite);
+				text_layer_set_text(s_layer_amPm, "pp");
+				text_layer_set_font(s_layer_amPm, s_font_amPm);
+				text_layer_set_text_alignment(s_layer_amPm, GTextAlignmentLeft);
+
+				layer_add_child(s_layer_timeDisplay, (Layer*)s_layer_amPm);
+				text_layer_set_text_alignment(s_layer_time, GTextAlignmentLeft);
+			}
+
+			text_layer_set_text(s_layer_amPm, &timeBuf12h[6]); // "AM" or "PM"
+
+			uint8_t amPmYCoord = 48;
+
+			GSize timeSize = text_layer_get_content_size(s_layer_time);
+
+			int16_t timeXCoord = (112 - timeSize.w) >> 1; // centralise with space for amPm
+			layer_set_frame((Layer*)s_layer_time, GRect(timeXCoord, -10, (136 - timeXCoord), 100));
+
+			layer_set_frame((Layer*)s_layer_amPm, GRect((timeXCoord + timeSize.w), amPmYCoord, 24, 40));
 		}
 		
-		text_layer_set_text(s_layer_amPm, &timeBuf12h[6]); // "AM" or "PM"
-		
-		uint8_t amPmYCoord = 0;
-		if (timeBuf12h[6] == 'P')
-			amPmYCoord = 49;
-		
-		GSize timeSize = text_layer_get_content_size(s_layer_time);
-		
-		int16_t timeXCoord = (112 - timeSize.w) >> 1; // centralise with space for amPm
-		layer_set_frame((Layer*)s_layer_time, GRect(timeXCoord, -10, (136 - timeXCoord), 100));
-		
-		layer_set_frame((Layer*)s_layer_amPm, GRect((timeXCoord + timeSize.w), amPmYCoord, 24, 40));
+		else if (s_layer_amPm != NULL)
+		{
+			text_layer_destroy(s_layer_amPm);
+			s_layer_amPm = NULL;
+			text_layer_set_text_alignment(s_layer_time, GTextAlignmentCenter);
+			layer_set_frame((Layer*)s_layer_time, GRect(0, -10, 136, 100)); // TODO: macro default time frame
+		}
 	}
 		
 	uint16_t minsSinceMidnight = (tick_time->tm_hour * 60) + tick_time->tm_min;
 	
-	if ( (minsSinceMidnight == s_settingUpdateTime)
-		|| (!s_gotVerse && (tick_time->tm_min == 0)) )
+	// TODO: more robust method to make sure we always have the new verse ASAP after s_settingUpdateTime -- consider phone being off at night etc
+	if ( (minsSinceMidnight == s_settingUpdateTime) || !s_gotVerse) //(!s_gotVerse && !s_gotVerse(tick_time->tm_min == 0)) )
 		getVerse();
-	
-#ifdef ENABLE_TIME_BAR
-	updateTimeBar(minsSinceMidnight);
-#endif
 }
 
-#ifdef ENABLE_TIME_BAR
-void initTimeBar(void)
-{
-	uint16_t minsInDay, minsInNight;
-	
-	if (s_settingBarStart == s_settingBarEnd)
-	{
-		minsInDay = MINUTES_PER_DAY;
-		minsInNight = 1; // prevent irrational behaviour, although it will never be night
-	}
-	else
-	{
-		minsInDay = diffTimes(s_settingBarStart, s_settingBarEnd);
-		minsInNight = MINUTES_PER_DAY - minsInDay;
-	}
-	
-	s_barPxPerMinDay = 96.0f / (float)minsInDay; // 96 is inner bar max length	
-	s_barPxPerMinNight = 96.0f / (float)minsInNight;
-	
-	time_t epochTime = time(NULL); 
-	struct tm *pTime = localtime(&epochTime);
-	uint16_t minsSinceMidnight = (pTime->tm_hour * 60) + pTime->tm_min;
-	
-	updateTimeBar(minsSinceMidnight);
-}
-#endif //ENABLE_TIME_BAR
-
-static void update_date()
+static void update_date(void)
 {
 	time_t temp = time(NULL); 
 	struct tm *tick_time = localtime(&temp);
 
-	static char date_buffer[] = DEFAULT_DATE_STRING;
+	static char date_buffer[25] = DEFAULT_DATE_STRING;
+	char date_format_string[9];
 
-	strftime(date_buffer, sizeof(DEFAULT_DATE_STRING), "%a %e %b", tick_time);
+	switch(s_settingDateFormat)
+	{
+	case 0: // Sat 31 Jan
+		memcpy(date_format_string, "%a %e %b", sizeof(date_format_string));
+		break;
+	case 1: // Sat Jan 31
+		memcpy(date_format_string, "%a %b %e", sizeof(date_format_string));
+		break;
+	case 2: // 31 Jan
+		memcpy(date_format_string, "%e %b", sizeof(date_format_string));
+		break;
+	case 3: // Jan 31
+		memcpy(date_format_string, "%b %e", sizeof(date_format_string));
+		break;
+	case 4: // Sat 31
+		memcpy(date_format_string, "%a %e", sizeof(date_format_string));
+		break;
+	/* case 5 is default */
+	case 6: // dd/mm/yyyy
+		memcpy(date_format_string, "%d/%m/%Y", sizeof(date_format_string));
+		break;
+	case 7: // mm/dd/yyyy
+		memcpy(date_format_string, "%m/%d/%Y", sizeof(date_format_string));
+		break;
+	case 8: // dd/mm/yy
+		memcpy(date_format_string, "%d/%m/%y", sizeof(date_format_string));
+		break;
+	case 9: // mm/dd/yy
+		memcpy(date_format_string, "%m/%d/%y", sizeof(date_format_string));
+		break;
+	default: // Saturday 31
+		memcpy(date_format_string, "%A %e", sizeof(date_format_string));
+		break;
+	}
 	
+	strftime(date_buffer, sizeof(date_buffer), date_format_string, tick_time);
+		
 #ifdef DEMO_MODE
 	strcpy(date_buffer, DEMO_DATE);
 #endif
@@ -758,8 +787,7 @@ static void updateBluetoothStatus(bool connected)
 }
 
 static void bluetoothConnectionHandler(bool connected)
-{
-	
+{	
 	VibePattern vibePattern;
 	
 	if (connected)
@@ -832,39 +860,34 @@ static void batteryStateHandler(BatteryChargeState batteryState)
 		startHideStatusTimer();
 }
 
-#ifdef ENABLE_TIME_BAR	
-static void draw_time_bar(Layer *this_layer, GContext *ctx)
+static void setupVerseScrollSettings(void)
 {
-	GRect canvasBounds = layer_get_bounds(this_layer);
-	
-	graphics_context_set_stroke_color(ctx, GColorWhite);
-	graphics_context_set_fill_color(ctx, GColorWhite);
-	graphics_draw_rect(ctx, canvasBounds);
-	
-	GRect barBounds;
-	barBounds.origin = (GPoint){ (canvasBounds.origin.x + 2), (canvasBounds.origin.y + 2) };
-	barBounds.size = (GSize){ (canvasBounds.size.w - 4), (canvasBounds.size.h - 4) };
-	
-	if (s_isDayTime)
+	switch(s_settingScrollSpeed)
 	{
-		GRect barToDraw = GRect(barBounds.origin.x, barBounds.origin.y, s_barLength, barBounds.size.h);
-		graphics_fill_rect(ctx, barToDraw, 0, GCornerNone);
-	}
-	else
-	{
-		GPoint lineStart = (GPoint){ (barBounds.origin.x + s_barLength), barBounds.origin.y };
-		GPoint lineEnd = (GPoint){ lineStart.x, (barBounds.origin.y + barBounds.size.h - 1) };
-		graphics_draw_line(ctx, lineStart, lineEnd);
+	case SCROLL_SPEED_SLOW:
+		s_verseScrollSettings.scrollSpeed = SCROLL_SPEED_PX_PER_MS_SLOW;
+		s_verseScrollSettings.waitTimeScroll = WAIT_TIME_SCROLL_MS_SLOW;
+		s_verseScrollSettings.waitTimeNoScroll = WAIT_TIME_NO_SCROLL_MS_SLOW;
+		break;
+	case SCROLL_SPEED_FAST:
+		s_verseScrollSettings.scrollSpeed = SCROLL_SPEED_PX_PER_MS_FAST;
+		s_verseScrollSettings.waitTimeScroll = WAIT_TIME_SCROLL_MS_FAST;
+		s_verseScrollSettings.waitTimeNoScroll = WAIT_TIME_NO_SCROLL_MS_FAST;
+		break;
+	default: // SCROLL_SPEED_MEDIUM is default
+		s_verseScrollSettings.scrollSpeed = SCROLL_SPEED_PX_PER_MS_MEDIUM;
+		s_verseScrollSettings.waitTimeScroll = WAIT_TIME_SCROLL_MS_MEDIUM;
+		s_verseScrollSettings.waitTimeNoScroll = WAIT_TIME_NO_SCROLL_MS_MEDIUM;
+		break;
 	}
 }
-#endif // ENABLE_TIME_BAR
-	
+
 static void setupVerseScrollAnimation(void)
-{
+{	
 	GSize contentSize = text_layer_get_content_size(s_layer_verseText);
 	int16_t scrollDistance = contentSize.h - VERSE_TEXT_VISIBLE_HEIGHT;
-	int16_t finalYCoord = VERSE_TEXT_Y_COORD - scrollDistance;
-	float scrollDuration = (float)scrollDistance / SCROLL_SPEED;
+	int16_t finalYCoord = s_verseTextYCoord - scrollDistance;
+	float scrollDuration = (float)scrollDistance / s_verseScrollSettings.scrollSpeed;
 	
 	if (s_animation_verseScroll != NULL)
 	{
@@ -879,7 +902,8 @@ static void setupVerseScrollAnimation(void)
 	{
 		Layer* verseTextLayer = text_layer_get_layer(s_layer_verseText);
 		GRect fromFrame = layer_get_frame(verseTextLayer);
-		GRect toFrame = GRect(4, finalYCoord, 136, 300);
+		fromFrame.origin.y = s_verseTextYCoord; // in case we are mid scroll
+		GRect toFrame = GRect(fromFrame.origin.x, finalYCoord, fromFrame.size.w, fromFrame.size.h);
 		
 		s_needScroll = true;
 
@@ -947,6 +971,71 @@ static void invertColours(bool invert)
 	}
 }
 
+void setupVerseTextSettings(VerseTextSettings_t* pSettings)
+{
+	/* Available system fonts: */
+	// FONT_KEY_GOTHIC_14
+	// FONT_KEY_GOTHIC_14_BOLD
+	// FONT_KEY_GOTHIC_18
+	// FONT_KEY_GOTHIC_18_BOLD
+	// FONT_KEY_GOTHIC_24
+	// FONT_KEY_GOTHIC_24_BOLD
+	// FONT_KEY_GOTHIC_28
+	// FONT_KEY_GOTHIC_28_BOLD
+		
+	switch (s_settingVerseFont)
+	{
+	case VERSE_FONT_SMALL:
+		pSettings->font = fonts_get_system_font(FONT_KEY_GOTHIC_14);
+		pSettings->padding = VERSE_TEXT_PADDING_SMALL;
+		break;
+	case VERSE_FONT_LARGE:
+		pSettings->font = fonts_get_system_font(FONT_KEY_GOTHIC_24);
+		pSettings->padding = VERSE_TEXT_PADDING_XLARGE;
+		break;
+	case VERSE_FONT_XLARGE:
+		pSettings->font = fonts_get_system_font(FONT_KEY_GOTHIC_28);
+		pSettings->padding = VERSE_TEXT_PADDING_LARGE;
+		break;
+	default: // go for medium in case of error
+		pSettings->font = fonts_get_system_font(FONT_KEY_GOTHIC_18);
+		pSettings->padding = VERSE_TEXT_PADDING_MEDIUM;
+		break;
+	}
+	
+	return;
+}
+
+void createVerseTextLayer(char* text)
+{
+	bool wasHidden = true;
+	GRect box = GRect(0, 0, 132, VERSE_BOX_MAX_HEIGHT);
+	VerseTextSettings_t verseTextSettings = {NULL, 0};
+	
+	setupVerseTextSettings(&verseTextSettings);
+	
+	GSize contentSize = graphics_text_layout_get_content_size(text, verseTextSettings.font, box, GTextOverflowModeWordWrap, GTextAlignmentCenter);
+	
+	if (s_layer_verseText != NULL)
+	{
+		wasHidden = layer_get_hidden((Layer*)s_layer_verseText);
+		text_layer_destroy(s_layer_verseText);
+	}
+	
+	s_verseTextYCoord = VERSE_TEXT_Y_COORD - verseTextSettings.padding;
+		
+	s_layer_verseText = text_layer_create(GRect(6, s_verseTextYCoord, 132, (contentSize.h + verseTextSettings.padding))); // TODO macro the 132
+	text_layer_set_background_color(s_layer_verseText, GColorBlack);
+	text_layer_set_text_color(s_layer_verseText, GColorWhite);
+	text_layer_set_text(s_layer_verseText, text);
+	text_layer_set_font(s_layer_verseText, verseTextSettings.font);
+	text_layer_set_text_alignment(s_layer_verseText, GTextAlignmentCenter);
+	
+	layer_set_hidden((Layer*)s_layer_verseText, wasHidden);
+	
+	layer_insert_below_sibling((Layer*)s_layer_verseText, (Layer*)s_layer_timeDisplay);
+}
+
 static void inbox_received_callback(DictionaryIterator* iterator, void* context)
 {
 	static char ref_buffer[REFERENCE_MAX_SIZE];
@@ -954,10 +1043,8 @@ static void inbox_received_callback(DictionaryIterator* iterator, void* context)
 	
 	bool gotRef = false;
 	bool gotText = false;
-	
-#ifdef ENABLE_TIME_BAR
-	bool gotBarTime = false;
-#endif
+	bool gotVerseFont = false;
+	bool needVerseAnimationAdjust = false;
 
 	// Read first item
 	Tuple* t = dict_read_first(iterator);
@@ -974,27 +1061,12 @@ static void inbox_received_callback(DictionaryIterator* iterator, void* context)
 			break;
 		case KEY_VERSE_TEXT:
 			snprintf(text_buffer, sizeof(text_buffer), "%s", t->value->cstring);
-			text_layer_set_text(s_layer_verseText, text_buffer);
 			gotText = true;
-			adjustVerseTextPosition();
-			setupVerseScrollAnimation();
 			break;
-#ifdef ENABLE_TIME_BAR
-		case KEY_BAR_START:
-			if (s_settingBarStart != t->value->uint16)
-			{
-				s_settingBarStart = t->value->uint16;
-				gotBarTime = true;
-			}
+		case KEY_DATE_FORMAT:
+			s_settingDateFormat = t->value->uint8;
+			update_date();
 			break;
-		case KEY_BAR_END:
-			if (s_settingBarEnd != t->value->uint16)
-			{
-				s_settingBarEnd = t->value->uint16;
-				gotBarTime = true;
-			}
-			break;
-#endif // ENABLE_TIME_BAR
 		case KEY_UPDATE_TIME:
 			s_settingUpdateTime = t->value->uint16;
 			break;
@@ -1007,6 +1079,19 @@ static void inbox_received_callback(DictionaryIterator* iterator, void* context)
 		case KEY_INVERT_COLOURS:
 			s_settingInvertColours = (t->value->uint8 != 0);
 			invertColours(s_settingInvertColours);
+			break;
+		case KEY_SHOW_AMPM:
+			s_settingShowAmPm = (t->value->uint8 != 0);
+			update_time(); // TODO: separate am/pm display to its own function
+			break;
+		case KEY_VERSE_FONT:
+			s_settingVerseFont = t->value->uint16;
+			gotVerseFont = true;
+			break;
+		case KEY_SCROLL_SPEED:
+			s_settingScrollSpeed = t->value->uint16;
+			setupVerseScrollSettings();
+			needVerseAnimationAdjust = true;
 			break;
 		default:
 			APP_LOG(APP_LOG_LEVEL_ERROR, "Key %d not recognized!", (int)t->key);
@@ -1031,12 +1116,20 @@ static void inbox_received_callback(DictionaryIterator* iterator, void* context)
 	if (gotRef && gotText)
 		s_gotVerse = true;
 	
+	if (gotText || gotVerseFont)
+	{
+		createVerseTextLayer(text_buffer);
+		needVerseAnimationAdjust = true;
+	}
+	
+	if (needVerseAnimationAdjust)
+		setupVerseScrollAnimation();
+	
 	if (s_gotVerse && s_verseShown)
+	{
+		adjustVerseTextPosition();
 		startVerseDisplayTimer();
-#ifdef ENABLE_TIME_BAR	
-	if (gotBarTime)
-		initTimeBar();
-#endif
+	}
 }
 
 static void inbox_dropped_callback(AppMessageResult reason, void *context)
@@ -1047,11 +1140,16 @@ static void inbox_dropped_callback(AppMessageResult reason, void *context)
 static void outbox_failed_callback(DictionaryIterator *iterator, AppMessageResult reason, void *context)
 {
 	APP_LOG(APP_LOG_LEVEL_ERROR, "Outbox failed: %s", translate_error(reason));
+	
+	s_timer_requestVerseTimer = app_timer_register(UPDATE_INTERVAL, requestVerseTimerCallback, NULL);
 }
 
 static void outbox_sent_callback(DictionaryIterator *iterator, void *context)
 {
 	APP_LOG(APP_LOG_LEVEL_INFO, "Outbox send success!");
+	
+	if (s_requestSettings)
+		s_requestSettings = false;
 }
 
 static void main_window_load(Window* window)
@@ -1113,12 +1211,6 @@ static void main_window_load(Window* window)
 	text_layer_set_font(s_layer_date, fonts_get_system_font(FONT_KEY_GOTHIC_24));
 	text_layer_set_text_alignment(s_layer_date, GTextAlignmentCenter);
 	
-	// Create canvas Layer
-	s_layer_timeBar = layer_create(GRect(18, 119, 100, 11));
-#ifdef ENABLE_TIME_BAR	
-	layer_set_update_proc(s_layer_timeBar, draw_time_bar);
-#endif
-	
 	// Bluetooth layers
 	s_layer_bluetoothGroup = layer_create(GRECT_BLUETOOTH_OUT);
 	s_layer_bluetoothLogo = bitmap_layer_create(GRect(0, 0, 11, 16));
@@ -1144,9 +1236,6 @@ static void main_window_load(Window* window)
 	// Add elements to TimeDisplayLayer
 	s_layer_timeDisplay = layer_create(GRect(4, 11, 136, 130));
 	layer_add_child(s_layer_timeDisplay, text_layer_get_layer(s_layer_date));
-#ifdef ENABLE_TIME_BAR	
-	layer_add_child(s_layer_timeDisplay, s_layer_timeBar);
-#endif
 	layer_add_child(s_layer_timeDisplay, text_layer_get_layer(s_layer_time));
 	layer_add_child(s_layer_timeDisplay, s_layer_bluetoothGroup);
 	layer_add_child(s_layer_timeDisplay, s_layer_batteryGroup);
@@ -1158,26 +1247,21 @@ static void main_window_load(Window* window)
 	text_layer_set_text(s_layer_verseRef, "Verse of the day");
 	text_layer_set_font(s_layer_verseRef, fonts_get_system_font(FONT_KEY_GOTHIC_14_BOLD));
 	text_layer_set_text_alignment(s_layer_verseRef, GTextAlignmentCenter);
-	
-	// Create verse text TextLayer
-	s_layer_verseText = text_layer_create(GRect(4, VERSE_TEXT_Y_COORD, 136, 300)); // four px padding above text. 114 px visible (height)
-	text_layer_set_background_color(s_layer_verseText, GColorBlack);
-	text_layer_set_text_color(s_layer_verseText, GColorWhite);
-	text_layer_set_text(s_layer_verseText, "Loading...");
-	text_layer_set_font(s_layer_verseText, fonts_get_system_font(FONT_KEY_GOTHIC_14));
-	text_layer_set_text_alignment(s_layer_verseText, GTextAlignmentCenter);
-	layer_set_hidden((Layer*)s_layer_verseText, true);
-	adjustVerseTextPosition();
 		
 	// Add layers to window
 	layer_add_child(window_layer, bitmap_layer_get_layer(s_layer_borderLeft));
 	layer_add_child(window_layer, bitmap_layer_get_layer(s_layer_borderRight));
-	layer_add_child(window_layer, text_layer_get_layer(s_layer_verseText));
+	// s_layer_verseText will be added here, see below
 	layer_add_child(window_layer, s_layer_timeDisplay);
 	layer_add_child(window_layer, bitmap_layer_get_layer(s_layer_borderTop));
 	layer_add_child(window_layer, bitmap_layer_get_layer(s_layer_borderBottom));
 	layer_add_child(window_layer, text_layer_get_layer(s_layer_verseRef));
 	layer_add_child(window_layer, (Layer*)s_layer_miniTime);
+	
+	// Create verse text TextLayer
+	// NOTE: createVerseTextLayer adds layer to window behind s_layer_timeDisplay
+	s_layer_verseText = NULL;
+	createVerseTextLayer("Loading...\n\n(Please check data connection)");
 	
 	// variables to be set up later
 	s_verseShown = false;
@@ -1201,15 +1285,14 @@ static void main_window_load(Window* window)
 	for (uint8_t i=0; i<NUM_INVERTER_LAYERS_PER_BORDER; i++)
 		s_layers_inverterBottom[i] = NULL;
 
-#ifdef ENABLE_TIME_BAR	
-	initTimeBar();
-#endif
 	initMiniTimeAnimation();
 	initBorderTopAnimations();
 	initBorderBottomAnimations();
+	setupVerseScrollSettings();
+	setupVerseScrollAnimation();
 	
 	updateBluetoothStatus(bluetooth_connection_service_peek());
-	updateBatteryState(battery_state_service_peek());
+	batteryStateHandler(battery_state_service_peek()); // causes appropriate status icons to be animated in
 	
 	invertColours(s_settingInvertColours);
 	
@@ -1254,7 +1337,6 @@ static void main_window_unload(Window* window)
 	gbitmap_destroy(s_bitmap_batteryIconCharging);
 	gbitmap_destroy(s_bitmap_batteryIconPlugged);
 	layer_destroy(s_layer_timeDisplay);
-	layer_destroy(s_layer_timeBar);
 	layer_destroy(s_layer_bluetoothGroup);
 	layer_destroy(s_layer_batteryGroup);
 	animation_destroy((Animation*) s_animation_miniTime);
@@ -1266,51 +1348,68 @@ static void main_window_unload(Window* window)
 		animation_destroy((Animation*) s_animation_verseScroll);
 }
 
-static void readPersistentStorage(void)
-{	
-	if (persist_exists(PERSIST_KEY_BARSTART))
-		s_settingBarStart = persist_read_int(PERSIST_KEY_BARSTART);
-	else
-		s_settingBarStart = DEFAULT_BAR_START;
+static void writePersistentStorage(void);
+
+static void resolvePersistantStorage(int16_t oldStorageVersion)
+{
+	s_requestSettings = false;
 	
-	if (persist_exists(PERSIST_KEY_BAREND))
-		s_settingBarEnd = persist_read_int(PERSIST_KEY_BAREND);
-	else
-		s_settingBarEnd = DEFAULT_BAR_END;
-	
-	if (persist_exists(PERSIST_KEY_UPDATETIME))
-		s_settingUpdateTime = persist_read_int(PERSIST_KEY_UPDATETIME);
-	else
-		s_settingUpdateTime = DEFAULT_UPDATE_TIME;
-	
-	if (persist_exists(PERSIST_KEY_ENABLELIGHT))
-		s_settingEnableLight = persist_read_bool(PERSIST_KEY_ENABLELIGHT);
-	else
-		s_settingEnableLight = DEFAULT_ENABLE_LIGHT;
-	
-	if (persist_exists(PERSIST_KEY_BTVIBE))
-		s_settingBtVibe = persist_read_bool(PERSIST_KEY_BTVIBE);
-	else
-		s_settingBtVibe = DEFAULT_BT_VIBE;
-	
-	if (persist_exists(PERSIST_KEY_INVERTCOLOURS))
-		s_settingInvertColours = persist_read_bool(PERSIST_KEY_INVERTCOLOURS);
-	else
-		s_settingInvertColours = DEFAULT_INVERT_COLOURS;
+	// translate settings
+	switch(oldStorageVersion)
+	{
+	case 0:
+		{
+			// leave s_settingDateFormat as default
+			// leave s_settingShowAmPm as default
+			// leave s_settingVerseFont as default
+			// leave s_settingScrollSpeed as default
+			// persist read other settings
+			s_settingDateFormat = persist_read_int(PERSIST_KEY_DATEFORMAT);
+			s_settingUpdateTime = persist_read_int(PERSIST_KEY_UPDATETIME);
+			s_settingEnableLight = persist_read_bool(PERSIST_KEY_ENABLELIGHT);
+			s_settingBtVibe = persist_read_bool(PERSIST_KEY_BTVIBE);
+			s_settingInvertColours = persist_read_bool(PERSIST_KEY_INVERTCOLOURS);
+		}
+		break;
+	default: // clean install of program, leave all settings as defaults
+		{
+			// clean install or upgrading from old version; phone's settings may be out of sync
+			// need to request all settings to be sent from phone
+			s_requestSettings = true;
+		}
+		break;
+	}
+		
+	persist_write_int(PERSIST_KEY_STORAGEVERSION, PERSISTENT_STORAGE_VERSION);
+	writePersistentStorage();
 }
 
-static void writePersistentStorage(void)
+static void readPersistentStorage(void)
 {
-	if ( !persist_exists(PERSIST_KEY_BARSTART) || (persist_read_int(PERSIST_KEY_BARSTART) != s_settingBarStart) )
-	{
-		APP_LOG(APP_LOG_LEVEL_DEBUG, "Persisting BarStart: %d", s_settingBarStart);
-		persist_write_int(PERSIST_KEY_BARSTART, s_settingBarStart);
-	}
+	// resolve persistent storage contents if necessary
+	int16_t storageVersion = -1;
+	if (persist_exists(PERSIST_KEY_STORAGEVERSION))
+		storageVersion = persist_read_int(PERSIST_KEY_STORAGEVERSION);
+	if (storageVersion != PERSISTENT_STORAGE_VERSION)
+		resolvePersistantStorage(storageVersion);
 	
-	if ( !persist_exists(PERSIST_KEY_BAREND) || (persist_read_int(PERSIST_KEY_BAREND) != s_settingBarEnd) )
+	// assume all keys exist since we are resolved
+	s_settingDateFormat = persist_read_int(PERSIST_KEY_DATEFORMAT);
+	s_settingUpdateTime = persist_read_int(PERSIST_KEY_UPDATETIME);
+	s_settingEnableLight = persist_read_bool(PERSIST_KEY_ENABLELIGHT);
+	s_settingBtVibe = persist_read_bool(PERSIST_KEY_BTVIBE);
+	s_settingInvertColours = persist_read_bool(PERSIST_KEY_INVERTCOLOURS);
+	s_settingShowAmPm = persist_read_bool(PERSIST_KEY_SHOWAMPM);
+	s_settingVerseFont = persist_read_int(PERSIST_KEY_VERSEFONT);
+	s_settingScrollSpeed = persist_read_int(PERSIST_KEY_SCROLLSPEED);
+}
+
+void writePersistentStorage(void)
+{	
+	if ( !persist_exists(PERSIST_KEY_DATEFORMAT) || (persist_read_int(PERSIST_KEY_DATEFORMAT) != s_settingDateFormat) )
 	{
-		APP_LOG(APP_LOG_LEVEL_DEBUG, "Persisting BarEnd: %d", s_settingBarEnd);
-		persist_write_int(PERSIST_KEY_BAREND, s_settingBarEnd);
+		APP_LOG(APP_LOG_LEVEL_DEBUG, "Persisting DateFormat: %d", s_settingDateFormat);
+		persist_write_int(PERSIST_KEY_DATEFORMAT, s_settingDateFormat);
 	}
 	
 	if ( !persist_exists(PERSIST_KEY_UPDATETIME) || (persist_read_int(PERSIST_KEY_UPDATETIME) != s_settingUpdateTime) )
@@ -1335,6 +1434,24 @@ static void writePersistentStorage(void)
 	{
 		APP_LOG(APP_LOG_LEVEL_DEBUG, "Persisting InvertColours: %d", s_settingInvertColours);
 		persist_write_bool(PERSIST_KEY_INVERTCOLOURS, s_settingInvertColours);
+	}
+	
+	if ( !persist_exists(PERSIST_KEY_SHOWAMPM) || (persist_read_bool(PERSIST_KEY_SHOWAMPM) != s_settingShowAmPm) )
+	{
+		APP_LOG(APP_LOG_LEVEL_DEBUG, "Persisting ShowAmPm: %d", s_settingShowAmPm);
+		persist_write_bool(PERSIST_KEY_SHOWAMPM, s_settingShowAmPm);
+	}
+	
+	if ( !persist_exists(PERSIST_KEY_VERSEFONT) || (persist_read_int(PERSIST_KEY_VERSEFONT) != s_settingVerseFont) )
+	{
+		APP_LOG(APP_LOG_LEVEL_DEBUG, "Persisting VerseFont: %d", s_settingVerseFont);
+		persist_write_int(PERSIST_KEY_VERSEFONT, s_settingVerseFont);
+	}
+	
+	if ( !persist_exists(PERSIST_KEY_SCROLLSPEED) || (persist_read_int(PERSIST_KEY_SCROLLSPEED) != s_settingScrollSpeed) )
+	{
+		APP_LOG(APP_LOG_LEVEL_DEBUG, "Persisting ScrollSpeed: %d", s_settingScrollSpeed);
+		persist_write_int(PERSIST_KEY_SCROLLSPEED, s_settingScrollSpeed);
 	}
 }
 

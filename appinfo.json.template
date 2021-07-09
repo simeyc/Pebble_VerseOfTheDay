@@ -2,12 +2,15 @@
     "uuid": "ADD-UUID-HERE",
     "companyName": "ADD-COMPANY-NAME-HERE",
     "appKeys": {
-        "KEY_BAR_END": 3,
-        "KEY_BAR_START": 2,
-        "KEY_BT_VIBE": 6,
-        "KEY_ENABLE_LIGHT": 5,
-        "KEY_INVERT_COLOURS": 7,
-        "KEY_UPDATE_TIME": 4,
+        "KEY_BT_VIBE": 5,
+        "KEY_DATE_FORMAT": 2,
+        "KEY_ENABLE_LIGHT": 4,
+        "KEY_INVERT_COLOURS": 6,
+        "KEY_REQUEST_SETTINGS": 10,
+        "KEY_SCROLL_SPEED": 9,
+        "KEY_SHOW_AMPM": 7,
+        "KEY_UPDATE_TIME": 3,
+        "KEY_VERSE_FONT": 8,
         "KEY_VERSE_REFERENCE": 0,
         "KEY_VERSE_TEXT": 1
     },
@@ -47,9 +50,12 @@
             }
         ]
     },
+    "sdkVersion": "3",
     "shortName": "Verse Of The Day",
-    "versionCode": 1,
-    "versionLabel": "1.2",
+    "targetPlatforms": [
+        "aplite"
+    ],
+    "versionLabel": "1.3",
     "watchapp": {
         "watchface": true
     }
