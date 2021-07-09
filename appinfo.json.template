@@ -59,7 +59,7 @@
     "sdkVersion": "2",
     "shortName": "Verse Of The Day",
     "versionCode": 1,
-    "versionLabel": "1.5",
+    "versionLabel": "1.6",
     "watchapp": {
         "watchface": true
     }
