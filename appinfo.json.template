@@ -6,6 +6,7 @@
         "KEY_BAR_START": 2,
         "KEY_BT_VIBE": 6,
         "KEY_ENABLE_LIGHT": 5,
+        "KEY_INVERT_COLOURS": 7,
         "KEY_UPDATE_TIME": 4,
         "KEY_VERSE_REFERENCE": 0,
         "KEY_VERSE_TEXT": 1
@@ -48,7 +49,7 @@
     },
     "shortName": "Verse Of The Day",
     "versionCode": 1,
-    "versionLabel": "1.1",
+    "versionLabel": "1.2",
     "watchapp": {
         "watchface": true
     }

@@ -1,24 +1,27 @@
 var baseUrl = "http://www.biblegateway.com/votd/get/?format=plaintext&version=";
-var configPageUrl = 'https://dl.dropboxusercontent.com/u/96641345/VOTDConfigV1_1.html';
+var configPageUrl = 'https://dl.dropboxusercontent.com/u/96641345/VOTDConfigV1_2.html';
 var versionStorageKey = 0;
 var verseRefStorageKey = 1;
 var verseTextStorageKey = 2;
 var updateTimeStorageKey = 3;
 var enableLightStorageKey = 4;
 var btVibeStorageKey = 5;
+var invertColoursStorageKey = 6;
 var versionString = "esvuk";
 var barStart = -1;
 var barEnd = -1;
 var verseRef;
 var verseText;
-var updateTime = 320;
+var updateTime = 360;
 var enableLight = true;
 var btVibe = true;
+var invertColours = false;
 var barBoundsChanged = false;
 var verseNew = false;
 var updateTimeChanged = false;
 var enableLightChanged = false;
 var btVibeChanged = false;
+var invertColoursChanged = false;
 
 var xhrRequest = function (url, type, callback) {
   var xhr = new XMLHttpRequest();
@@ -65,17 +68,24 @@ var sendToPebble = function() {
 		sendMessage = true;
 	}
 	
+	if (invertColoursChanged)
+	{		
+		dictionary.KEY_INVERT_COLOURS = invertColours?1:0;
+		sendMessage = true;
+	}
+	
 	if (sendMessage) {
 		console.log("Sending to pebble: " + JSON.stringify(dictionary));
 		
 		Pebble.sendAppMessage(dictionary,
 		function(e) {
 			console.log("Sent to Pebble successfully!");
-			verseNew = verseNew ? false : true;
-			barBoundsChanged = barBoundsChanged ? false : true;
-			updateTimeChanged = updateTimeChanged ? false : true;
-			enableLightChanged = enableLightChanged ? false : true;
-			btVibeChanged = btVibeChanged ? false : true;
+			verseNew = false;
+			barBoundsChanged = false;
+			updateTimeChanged = false;
+			enableLightChanged = false;
+			btVibeChanged = false;
+			invertColoursChanged = false;
 		},
 		function(e) {
 			console.log("Error sending to Pebble!");
@@ -100,7 +110,7 @@ var verseReceivedCallback = function(responseText) {
 		squareBracketClose = text.search(/ \] /);
 	}
 	
-	if ( (verseRef != reference) || (verseText != text) )
+	//if ( (verseRef != reference) || (verseText != text) )
 	{
 		verseRef = reference;
 		verseText = text;
@@ -134,7 +144,7 @@ Pebble.addEventListener('ready',
 
 	tempVar = localStorage.getItem(updateTimeStorageKey);	
 	if (tempVar !== null)
-		updateTime = tempVar;
+		updateTime = parseInt(tempVar);
 
 	tempVar = localStorage.getItem(enableLightStorageKey);	
 	if (tempVar !== null)
@@ -143,6 +153,10 @@ Pebble.addEventListener('ready',
 	tempVar = localStorage.getItem(btVibeStorageKey);	
 	if (tempVar !== null)
 		btVibe = tempVar;
+
+	tempVar = localStorage.getItem(invertColoursStorageKey);	
+	if (tempVar !== null)
+		invertColours = tempVar;
 	
 	getVerse();
   }
@@ -196,9 +210,15 @@ Pebble.addEventListener("webviewclosed",
       btVibeChanged = true;
 	}
 	
+	if ( configuration.hasOwnProperty('invertColours') && (configuration.invertColours != invertColours.toString()) ) {
+      invertColours = (configuration.invertColours.toString() === "true");
+      localStorage.setItem(invertColoursStorageKey, invertColours);
+      invertColoursChanged = true;
+	}
+	
 	if (gettingVerse) // all will be sent when the verse is received
       getVerse();
-	else if (barBoundsChanged || updateTimeChanged|| enableLightChanged || btVibeChanged)
+	else if (barBoundsChanged || updateTimeChanged|| enableLightChanged || btVibeChanged || invertColoursChanged)
       sendToPebble();
   }
 );
@@ -208,6 +228,7 @@ Pebble.addEventListener('showConfiguration', function(e) {
   args += '&updateTime=' + updateTime.toString();
   args +='&enableLight=' + enableLight.toString();
   args +='&btVibe=' + btVibe.toString();
+  args +='&invertColours=' + invertColours.toString();
 
   Pebble.openURL(configPageUrl + args);
 });

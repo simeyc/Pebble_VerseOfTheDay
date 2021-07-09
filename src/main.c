@@ -15,17 +15,20 @@
 #define KEY_UPDATE_TIME 4
 #define KEY_ENABLE_LIGHT 5
 #define KEY_BT_VIBE 6
+#define KEY_INVERT_COLOURS 7
 #define PERSIST_KEY_BARSTART 0
 #define PERSIST_KEY_BAREND 1
 #define PERSIST_KEY_UPDATETIME 2
 #define PERSIST_KEY_ENABLELIGHT 3
 #define PERSIST_KEY_BTVIBE 4
+#define PERSIST_KEY_INVERTCOLOURS 5
 	
 #define DEFAULT_BAR_START 480 // 8am
 #define DEFAULT_BAR_END 0 // 12am
 #define DEFAULT_UPDATE_TIME 360 // 6am
 #define DEFAULT_ENABLE_LIGHT true
 #define DEFAULT_BT_VIBE true
+#define DEFAULT_INVERT_COLOURS false
 
 #define DEFAULT_DATE_STRING "DAY ## MTH"
 #define DEFAULT_TIME_STRING "HH:MMxx"
@@ -55,6 +58,8 @@
 
 #define FONT_TIME RESOURCE_ID_FONT_TIME_96
 #define FONT_AMPM RESOURCE_ID_FONT_AMPM_38
+	
+#define NUM_INVERTER_LAYERS_PER_BORDER 6
 
 static const uint8_t VERSE_TEXT_Y_COORD = 23;
 
@@ -78,6 +83,9 @@ static BitmapLayer* s_layer_batteryColon;
 static TextLayer* s_layer_batteryLevel;
 static Layer* s_layer_bluetoothGroup;
 static Layer* s_layer_batteryGroup;
+static InverterLayer* s_layer_inverterMain; // used as flag - if != NULL, colours are inverted
+static InverterLayer* s_layers_inverterTop[NUM_INVERTER_LAYERS_PER_BORDER];
+static InverterLayer* s_layers_inverterBottom[NUM_INVERTER_LAYERS_PER_BORDER];
 
 static GBitmap* s_bitmap_bordersVert;
 static GBitmap* s_bitmap_bordersHoriz;
@@ -129,6 +137,7 @@ static uint16_t s_settingBarEnd;
 static uint16_t s_settingUpdateTime;
 static uint16_t s_settingEnableLight;
 static bool s_settingBtVibe;
+static bool s_settingInvertColours;
 
 static GFont* s_font_time;
 static GFont* s_font_amPm;
@@ -431,7 +440,7 @@ void updateTimeBar(uint16_t timeNow)
 static void sendAppMessage(void)
 {
 	DictionaryIterator *iter;
-	int ret = app_message_outbox_begin(&iter);
+	app_message_outbox_begin(&iter);
 	
 	if (iter)
 	{
@@ -884,6 +893,60 @@ static void setupVerseScrollAnimation(void)
 	}
 }
 
+static void deleteInverterLayer(InverterLayer** ppLayer)
+{
+	if (*ppLayer != NULL)
+	{
+		layer_remove_from_parent((Layer*)*ppLayer);
+		inverter_layer_destroy(*ppLayer);
+		*ppLayer = NULL;
+	}
+}
+
+static void invertColours(bool invert)
+{
+	if (invert)
+	{
+		if (s_layer_inverterMain != NULL)
+			return;
+		
+		s_layer_inverterMain = inverter_layer_create(GRect(2, 11, 140, 132));
+		s_layers_inverterTop[0] = inverter_layer_create(GRect(11, 75, 122, 1));
+		s_layers_inverterTop[1] = inverter_layer_create(GRect(8, 76, 128, 1));
+		s_layers_inverterTop[2] = inverter_layer_create(GRect(6, 77, 132, 1));
+		s_layers_inverterTop[3] = inverter_layer_create(GRect(5, 78, 134, 1));
+		s_layers_inverterTop[4] = inverter_layer_create(GRect(4, 79, 136, 2));
+		s_layers_inverterTop[5] = inverter_layer_create(GRect(3, 81, 138, 3));
+		s_layers_inverterBottom[0] = inverter_layer_create(GRect(3, 0, 138, 3));
+		s_layers_inverterBottom[1] = inverter_layer_create(GRect(4, 3, 136, 2));
+		s_layers_inverterBottom[2] = inverter_layer_create(GRect(5, 5, 134, 1));
+		s_layers_inverterBottom[3] = inverter_layer_create(GRect(6, 6, 132, 1));
+		s_layers_inverterBottom[4] = inverter_layer_create(GRect(8, 7, 128, 1));
+		s_layers_inverterBottom[5] = inverter_layer_create(GRect(11, 8, 122, 1));
+		
+		layer_insert_below_sibling((Layer*)s_layer_inverterMain, (Layer*)s_layer_borderTop);
+
+		for (uint8_t i=0; i<NUM_INVERTER_LAYERS_PER_BORDER; i++)
+			layer_add_child((Layer*)s_layer_borderTop, (Layer*)s_layers_inverterTop[i]);
+
+		for (uint8_t i=0; i<NUM_INVERTER_LAYERS_PER_BORDER; i++)
+			layer_add_child((Layer*)s_layer_borderBottom, (Layer*)s_layers_inverterBottom[i]);
+	}
+	else
+	{
+		if (s_layer_inverterMain == NULL)
+			return;
+		
+		deleteInverterLayer(&s_layer_inverterMain);
+
+		for (uint8_t i=0; i<NUM_INVERTER_LAYERS_PER_BORDER; i++)
+			deleteInverterLayer(&s_layers_inverterTop[i]);
+
+		for (uint8_t i=0; i<NUM_INVERTER_LAYERS_PER_BORDER; i++)
+			deleteInverterLayer(&s_layers_inverterBottom[i]);
+	}
+}
+
 static void inbox_received_callback(DictionaryIterator* iterator, void* context)
 {
 	static char ref_buffer[REFERENCE_MAX_SIZE];
@@ -940,6 +1003,10 @@ static void inbox_received_callback(DictionaryIterator* iterator, void* context)
 			break;
 		case KEY_BT_VIBE:
 			s_settingBtVibe = (t->value->uint8 != 0);
+			break;
+		case KEY_INVERT_COLOURS:
+			s_settingInvertColours = (t->value->uint8 != 0);
+			invertColours(s_settingInvertColours);
 			break;
 		default:
 			APP_LOG(APP_LOG_LEVEL_ERROR, "Key %d not recognized!", (int)t->key);
@@ -1112,6 +1179,7 @@ static void main_window_load(Window* window)
 	layer_add_child(window_layer, text_layer_get_layer(s_layer_verseRef));
 	layer_add_child(window_layer, (Layer*)s_layer_miniTime);
 	
+	// variables to be set up later
 	s_verseShown = false;
 	s_gotVerse = false;
 	s_needScroll = false;
@@ -1127,6 +1195,11 @@ static void main_window_load(Window* window)
 	s_animation_battery = NULL;
 	s_layer_amPm = NULL;
 	s_font_amPm = NULL;
+	s_layer_inverterMain = NULL;
+	for (uint8_t i=0; i<NUM_INVERTER_LAYERS_PER_BORDER; i++)
+		s_layers_inverterTop[i] = NULL;
+	for (uint8_t i=0; i<NUM_INVERTER_LAYERS_PER_BORDER; i++)
+		s_layers_inverterBottom[i] = NULL;
 
 #ifdef ENABLE_TIME_BAR	
 	initTimeBar();
@@ -1138,12 +1211,15 @@ static void main_window_load(Window* window)
 	updateBluetoothStatus(bluetooth_connection_service_peek());
 	updateBatteryState(battery_state_service_peek());
 	
+	invertColours(s_settingInvertColours);
+	
 	getVerse();
 }
 
 static void main_window_unload(Window* window)
 {
 	animation_unschedule_all(); // destroys status animations TODO: maybe others (through stopped callback)?
+	invertColours(false); // deletes inverter layers
 	fonts_unload_custom_font(s_font_time);
 	if(s_font_amPm != NULL)
 		fonts_unload_custom_font(s_font_amPm);
@@ -1216,6 +1292,11 @@ static void readPersistentStorage(void)
 		s_settingBtVibe = persist_read_bool(PERSIST_KEY_BTVIBE);
 	else
 		s_settingBtVibe = DEFAULT_BT_VIBE;
+	
+	if (persist_exists(PERSIST_KEY_INVERTCOLOURS))
+		s_settingInvertColours = persist_read_bool(PERSIST_KEY_INVERTCOLOURS);
+	else
+		s_settingInvertColours = DEFAULT_INVERT_COLOURS;
 }
 
 static void writePersistentStorage(void)
@@ -1248,6 +1329,12 @@ static void writePersistentStorage(void)
 	{
 		APP_LOG(APP_LOG_LEVEL_DEBUG, "Persisting BtVibe: %d", s_settingBtVibe);
 		persist_write_bool(PERSIST_KEY_BTVIBE, s_settingBtVibe);
+	}
+	
+	if ( !persist_exists(PERSIST_KEY_INVERTCOLOURS) || (persist_read_bool(PERSIST_KEY_INVERTCOLOURS) != s_settingInvertColours) )
+	{
+		APP_LOG(APP_LOG_LEVEL_DEBUG, "Persisting InvertColours: %d", s_settingInvertColours);
+		persist_write_bool(PERSIST_KEY_INVERTCOLOURS, s_settingInvertColours);
 	}
 }
 
