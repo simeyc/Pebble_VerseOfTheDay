@@ -1,21 +1,24 @@
 var baseUrl = "http://www.biblegateway.com/votd/get/?format=plaintext&version=";
-var configPageUrl = 'https://dl.dropboxusercontent.com/u/96641345/VOTDConfig.html';
+var configPageUrl = 'https://dl.dropboxusercontent.com/u/96641345/VOTDConfigV1_1.html';
 var versionStorageKey = 0;
 var verseRefStorageKey = 1;
 var verseTextStorageKey = 2;
 var updateTimeStorageKey = 3;
 var enableLightStorageKey = 4;
+var btVibeStorageKey = 5;
 var versionString = "esvuk";
 var barStart = -1;
 var barEnd = -1;
 var verseRef;
 var verseText;
-var updateTime = -1;
+var updateTime = 320;
 var enableLight = true;
+var btVibe = true;
 var barBoundsChanged = false;
 var verseNew = false;
 var updateTimeChanged = false;
 var enableLightChanged = false;
+var btVibeChanged = false;
 
 var xhrRequest = function (url, type, callback) {
   var xhr = new XMLHttpRequest();
@@ -52,12 +55,18 @@ var sendToPebble = function() {
 	
 	if (enableLightChanged)
 	{		
-		dictionary.KEY_ENABLE_LIGHT = enableLight;
+		dictionary.KEY_ENABLE_LIGHT = enableLight?1:0;
+		sendMessage = true;
+	}
+	
+	if (btVibeChanged)
+	{		
+		dictionary.KEY_BT_VIBE = btVibe?1:0;
 		sendMessage = true;
 	}
 	
 	if (sendMessage) {
-		console.log(JSON.stringify(dictionary));
+		console.log("Sending to pebble: " + JSON.stringify(dictionary));
 		
 		Pebble.sendAppMessage(dictionary,
 		function(e) {
@@ -66,6 +75,7 @@ var sendToPebble = function() {
 			barBoundsChanged = barBoundsChanged ? false : true;
 			updateTimeChanged = updateTimeChanged ? false : true;
 			enableLightChanged = enableLightChanged ? false : true;
+			btVibeChanged = btVibeChanged ? false : true;
 		},
 		function(e) {
 			console.log("Error sending to Pebble!");
@@ -129,6 +139,10 @@ Pebble.addEventListener('ready',
 	tempVar = localStorage.getItem(enableLightStorageKey);	
 	if (tempVar !== null)
 		enableLight = tempVar;
+
+	tempVar = localStorage.getItem(btVibeStorageKey);	
+	if (tempVar !== null)
+		btVibe = tempVar;
 	
 	getVerse();
   }
@@ -151,22 +165,21 @@ Pebble.addEventListener("webviewclosed",
     if ( configuration.hasOwnProperty('versionString') && (configuration.versionString != versionString) ) {
       versionString = configuration.versionString;
       localStorage.setItem(versionStorageKey, versionString);
-      getVerse();
       gettingVerse = true;
     }
     
     if ( configuration.hasOwnProperty('dayStart') && (configuration.dayStart != barStart.toString()) ) {
-      barStart = configuration.dayStart;
+      barStart = parseInt(configuration.dayStart);
       barBoundsChanged = true;
     }
 	
     if ( configuration.hasOwnProperty('dayEnd') && (configuration.dayEnd != barEnd.toString()) ) {
-      barEnd = configuration.dayEnd;
+      barEnd = parseInt(configuration.dayEnd);
       barBoundsChanged = true;
     }
 	
 	if ( configuration.hasOwnProperty('updateTime') && (configuration.updateTime != updateTime.toString()) ) {
-      updateTime = configuration.updateTime;
+      updateTime = parseInt(configuration.updateTime);
       localStorage.setItem(updateTimeStorageKey, updateTime);
       updateTimeChanged = true;
 	}
@@ -177,7 +190,15 @@ Pebble.addEventListener("webviewclosed",
       enableLightChanged = true;
 	}
 	
-	if (!gettingVerse && (barBoundsChanged || updateTimeChanged|| enableLightChanged) ) // if getting verse then all will be sent when the verse is received
+	if ( configuration.hasOwnProperty('btVibe') && (configuration.btVibe != btVibe.toString()) ) {
+      btVibe = (configuration.btVibe.toString() === "true");
+      localStorage.setItem(btVibeStorageKey, btVibe);
+      btVibeChanged = true;
+	}
+	
+	if (gettingVerse) // all will be sent when the verse is received
+      getVerse();
+	else if (barBoundsChanged || updateTimeChanged|| enableLightChanged || btVibeChanged)
       sendToPebble();
   }
 );
@@ -186,6 +207,7 @@ Pebble.addEventListener('showConfiguration', function(e) {
   var args = '?versionString=' + versionString;
   args += '&updateTime=' + updateTime.toString();
   args +='&enableLight=' + enableLight.toString();
+  args +='&btVibe=' + btVibe.toString();
 
   Pebble.openURL(configPageUrl + args);
 });

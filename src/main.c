@@ -14,15 +14,18 @@
 #define KEY_BAR_END 3
 #define KEY_UPDATE_TIME 4
 #define KEY_ENABLE_LIGHT 5
+#define KEY_BT_VIBE 6
 #define PERSIST_KEY_BARSTART 0
 #define PERSIST_KEY_BAREND 1
 #define PERSIST_KEY_UPDATETIME 2
 #define PERSIST_KEY_ENABLELIGHT 3
+#define PERSIST_KEY_BTVIBE 4
 	
 #define DEFAULT_BAR_START 480 // 8am
 #define DEFAULT_BAR_END 0 // 12am
 #define DEFAULT_UPDATE_TIME 360 // 6am
 #define DEFAULT_ENABLE_LIGHT true
+#define DEFAULT_BT_VIBE true
 
 #define DEFAULT_DATE_STRING "DAY ## MTH"
 #define DEFAULT_TIME_STRING "HH:MMxx"
@@ -125,6 +128,7 @@ static uint16_t s_settingBarStart;
 static uint16_t s_settingBarEnd;
 static uint16_t s_settingUpdateTime;
 static uint16_t s_settingEnableLight;
+static bool s_settingBtVibe;
 
 static GFont* s_font_time;
 static GFont* s_font_amPm;
@@ -372,9 +376,7 @@ static bool animationRunning(void)
 static void showStatus(void);
 
 static void tap_handler(AccelAxisType axis, int32_t direction)
-{
-	APP_LOG(APP_LOG_LEVEL_DEBUG, "Shake registered!");
-	
+{	
 	if (animationRunning())
 		return;
 	
@@ -431,11 +433,8 @@ static void sendAppMessage(void)
 	DictionaryIterator *iter;
 	int ret = app_message_outbox_begin(&iter);
 	
-	APP_LOG(APP_LOG_LEVEL_DEBUG, "Outbox Begin return code = %s", translate_error(ret));
-	
 	if (iter)
 	{
-		APP_LOG(APP_LOG_LEVEL_DEBUG, "Requesting Verse");
 		//dict_write_cstring(iter, KEY_VERSE_REFERENCE, "placeholder");
 		app_message_outbox_send();
 	}
@@ -772,7 +771,9 @@ static void bluetoothConnectionHandler(bool connected)
 	}
 	
 	updateBluetoothStatus(connected);
-	vibes_enqueue_custom_pattern(vibePattern);
+	
+	if (s_settingBtVibe)
+		vibes_enqueue_custom_pattern(vibePattern);
 	
 	if (!s_bluetoothConnected)
 		showStatusSticky();
@@ -931,9 +932,15 @@ static void inbox_received_callback(DictionaryIterator* iterator, void* context)
 			}
 			break;
 #endif // ENABLE_TIME_BAR
+		case KEY_UPDATE_TIME:
+			s_settingUpdateTime = t->value->uint16;
+			break;
 		case KEY_ENABLE_LIGHT:
 			s_settingEnableLight = (t->value->uint8 != 0);
-			break;	
+			break;
+		case KEY_BT_VIBE:
+			s_settingBtVibe = (t->value->uint8 != 0);
+			break;
 		default:
 			APP_LOG(APP_LOG_LEVEL_ERROR, "Key %d not recognized!", (int)t->key);
 			break;
@@ -981,9 +988,7 @@ static void outbox_sent_callback(DictionaryIterator *iterator, void *context)
 }
 
 static void main_window_load(Window* window)
-{
-	APP_LOG(APP_LOG_LEVEL_DEBUG, "loading main window");
-	
+{	
 	Layer* window_layer = window_get_root_layer(window);
 	
 	// Vertical borders
@@ -1206,6 +1211,11 @@ static void readPersistentStorage(void)
 		s_settingEnableLight = persist_read_bool(PERSIST_KEY_ENABLELIGHT);
 	else
 		s_settingEnableLight = DEFAULT_ENABLE_LIGHT;
+	
+	if (persist_exists(PERSIST_KEY_BTVIBE))
+		s_settingBtVibe = persist_read_bool(PERSIST_KEY_BTVIBE);
+	else
+		s_settingBtVibe = DEFAULT_BT_VIBE;
 }
 
 static void writePersistentStorage(void)
@@ -1232,6 +1242,12 @@ static void writePersistentStorage(void)
 	{
 		APP_LOG(APP_LOG_LEVEL_DEBUG, "Persisting EnableLight: %d", s_settingEnableLight);
 		persist_write_bool(PERSIST_KEY_ENABLELIGHT, s_settingEnableLight);
+	}
+	
+	if ( !persist_exists(PERSIST_KEY_BTVIBE) || (persist_read_bool(PERSIST_KEY_BTVIBE) != s_settingBtVibe) )
+	{
+		APP_LOG(APP_LOG_LEVEL_DEBUG, "Persisting BtVibe: %d", s_settingBtVibe);
+		persist_write_bool(PERSIST_KEY_BTVIBE, s_settingBtVibe);
 	}
 }
 
@@ -1262,7 +1278,6 @@ static void init()
 	app_message_register_outbox_failed(outbox_failed_callback);
 	app_message_register_outbox_sent(outbox_sent_callback);		
 	
-	APP_LOG(APP_LOG_LEVEL_DEBUG, "opening app message");
 	int ret = app_message_open(app_message_inbox_size_maximum(),  APP_MESSAGE_OUTBOX_SIZE_MINIMUM);
 	
 	APP_LOG(APP_LOG_LEVEL_DEBUG, "app_message_open returned %s", translate_error(ret));
