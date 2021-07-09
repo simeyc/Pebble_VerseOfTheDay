@@ -1,6 +1,6 @@
 var votdBaseUrl = 'http://www.biblegateway.com/votd/get/?format=plaintext&version=';
 var favVerseBaseUrl = 'http://www.esvapi.org/v2/rest/passageQuery?key=IP&output-format=plain-text&include-first-verse-numbers=0&include-verse-numbers=0&include-footnotes=0&include-passage-horizontal-lines=0&include-heading-horizontal-lines=0&include-headings=0&include-subheadings=0&include-selahs=0&include-short-copyright=0&passage=';
-var configPageUrl = 'https://dl.dropboxusercontent.com/u/96641345/VOTDConfigV1_4.html';
+var configPageUrl = 'https://dl.dropboxusercontent.com/u/96641345/VOTDConfigV1_5.html';
 var versionStorageKey = 0;
 var verseRefStorageKey = 1;
 var verseTextStorageKey = 2;
@@ -26,7 +26,7 @@ var showAmPm = true;
 var verseFont = 1;
 var scrollSpeed = 1;
 var favVerseEnable = false;
-var favVerse = 'Joh3:16';
+var favVerse = 'joh3:16';
 
 var xhrRequest = function (url, type, callback) {
   var xhr = new XMLHttpRequest();
@@ -106,12 +106,16 @@ var favVerseReceivedCallback = function(responseText) {
 };
 
 var getVerse = function() {
-	var url = votdBaseUrl.concat(versionString);
-	var callback = votdReceivedCallback;
-	
+	var url;
+	var callback;
+			
 	if (favVerseEnable) {
 		url = favVerseBaseUrl.concat(favVerse);
 		callback = favVerseReceivedCallback;
+	}
+	else {
+		url = votdBaseUrl.concat(versionString);
+		callback = votdReceivedCallback;
 	}
 	
 	console.log("Getting verse - URL: "+ url);
@@ -206,19 +210,19 @@ Pebble.addEventListener('ready',
 
 	tempVar = localStorage.getItem(enableLightStorageKey);	
 	if (tempVar !== null)
-		enableLight = tempVar;
+		enableLight = (tempVar === 'true');
 
 	tempVar = localStorage.getItem(btVibeStorageKey);	
 	if (tempVar !== null)
-		btVibe = tempVar;
+		btVibe = (tempVar === 'true');
 
 	tempVar = localStorage.getItem(invertColoursStorageKey);	
 	if (tempVar !== null)
-		invertColours = tempVar;
+		invertColours = (tempVar === 'true');
 
 	tempVar = localStorage.getItem(showAmPmStorageKey);	
 	if (tempVar !== null)
-		showAmPm = tempVar;
+		showAmPm = (tempVar === 'true');
 
 	tempVar = localStorage.getItem(verseFontStorageKey);	
 	if (tempVar !== null)
@@ -230,8 +234,8 @@ Pebble.addEventListener('ready',
 
 	tempVar = localStorage.getItem(favVerseEnableStorageKey);	
 	if (tempVar !== null)
-		favVerseEnable = tempVar;
-
+		favVerseEnable = (tempVar === 'true');
+	
 	tempVar = localStorage.getItem(favVerseStorageKey);	
 	if (tempVar !== null)
 		favVerse = tempVar;
